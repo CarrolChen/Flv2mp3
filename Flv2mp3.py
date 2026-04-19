@@ -41,9 +41,30 @@ class ConvertThread(QThread):
             if self.is_terminated:
                 return
 
-            part_paths = []
+            file_count = len(files)
 
-            # --------------- 1. 先把当天所有 FLV 转成 MP3 分段 ---------------
+            # ============== 当天只有一个文件：直接转，不加序号 ==============
+            if file_count == 1:
+                flv_path = files[0]
+                folder = os.path.dirname(flv_path)
+                final_output = os.path.join(folder, f"{FIXED_PREFIX}{date_str}.mp3")
+
+                cmd = [
+                    FFMPEG_PATH, "-i", flv_path,
+                    "-vn", "-b:a", "320k", "-ac", "2", "-ar", "44100", "-c:a", "mp3", "-y", final_output
+                ]
+
+                try:
+                    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+                except:
+                    self.error_occur.emit(f"转换失败：{os.path.basename(flv_path)}")
+
+                current_step += 1
+                self.progress_update.emit(int(current_step / total_steps * 100))
+                continue
+
+            # ============== 当天多个文件：分段+序号+合并 ==============
+            part_paths = []
             for idx, flv_path in enumerate(files, 1):
                 if self.is_terminated:
                     return
@@ -54,7 +75,7 @@ class ConvertThread(QThread):
 
                 cmd = [
                     FFMPEG_PATH, "-i", flv_path,
-                    "-vn", "-b:a", "320k", "-ac", "2", "-ar", "48k", "-c:a", "mp3", "-y", part_path
+                    "-vn", "-b:a", "320k", "-ac", "2", "-ar", "44100", "-c:a", "mp3", "-y", part_path
                 ]
 
                 try:
@@ -66,7 +87,7 @@ class ConvertThread(QThread):
                 current_step += 1
                 self.progress_update.emit(int(current_step / total_steps * 100))
 
-            # --------------- 2. 当天分段转完，立刻合并 ---------------
+            # 合并
             if len(part_paths) >= 2:
                 if self.is_terminated:
                     return
